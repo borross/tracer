@@ -14,7 +14,7 @@ from urllib.parse import unquote
 
 SERVER = "0.0.0.0"
 PORT = 16666
-regexURLFeed = r"\S+?\n?\S+\|url\=([^\|]+).+"
+regexURLFeed = compile(r"\S+?\n?\S+\|url\=([^\|]+).+")
 ADDR = (SERVER, PORT)
 
 
@@ -69,9 +69,9 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime):
         if client_data != "":
             print(client_data)
         
-        if match(regexURLFeed, client_data):  # HERE ADD YOUR EXTRA ACTIONS FOR ENRICHMENT
+        if regexURLFeed.match(client_data):  # HERE ADD YOUR EXTRA ACTIONS FOR ENRICHMENT
             Category = "miniCT_URL_Decoder"
-            ioc = match(regexURLFeed, str(client_data)).group(1)
+            ioc = regexURLFeed.match(str(client_data)).group(1)
             somedata = unquote(ioc)
             responseToKUMA = "Category={}|MatchedIndicator={}|decodedURL={}\nLookupFinished".format(Category, ioc, somedata)
             #resp = "Category=MyFeed|MatchedIndicator=" + re.match(regexURLFeed, str(client_data)).group(1) + "|popularity=1|threat=" + somedata +"|type=1\nLookupFinished"
