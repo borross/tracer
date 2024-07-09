@@ -1,4 +1,4 @@
-[example.csv](https://github.com/user-attachments/files/16144035/example.csv)![image](https://github.com/borross/tracer/assets/39199196/edb2c62c-052c-440c-868e-8ea020b8c58e)
+![image](https://github.com/borross/tracer/assets/39199196/edb2c62c-052c-440c-868e-8ea020b8c58e)
 
 # tracer
 Утилита (скрипт) была написана для получения возможности обогощать событие по значению поля со сторонних систем с использованием языка программирования Python3. Tracer.py мимикрирует под механизм обогащения аналогично CyberTrace, с обогащенными данными можно работать подобно обогащению Threat Intelligence. Утилита может работать как на Linux (рекомендуется), так и Windows платформах (ОС).
