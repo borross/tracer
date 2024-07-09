@@ -26,10 +26,10 @@
 - PORT = 16666 (строка кода 27) - укажите порт для прослушивания
 
 ## Режимы работы:
-- Custom Mode (Режим пользовательских функций, по умолчанию, mode == 0): Позволяет использовать собственные функции для обогащения данных. Обогащение данными производится в строках 162-183 (mode == 0), в этой секции можете использовать произвольное обогащение данными, в коде есть примеры двух тестовых обогащений.
-- Feed File Mode (Режим загрузки файла, mode == 1): Загружает данные из указанного файла(ов) JSON или CSV для обогащения. Пример: `python3 Tracer.py -f /root/tracer/example.csv -k ioc` или `python3 Tracer.py -f /root/tracer/example.json -k mask`. Примеры файлов рядом со скриптом. Для масок URL заполняется отдельный словарь с регулярными выражениями по маске.
-- Dump Feed Mode (Режим дампа данных, mode == 2): Сохраняет данные в файл с расширением .tracer для последующего использования. Пример: `python3 Tracer.py -d /root/tracer/Phishing_URL_Data_Feed.json -k mask` или `python3 Tracer.py -d Malicious_Hash_Data_Feed.json -k MD5`
-- Load Feed Mode (Режим загрузки данных, mode == 3): Загружает данные из нескольких файлов с расширением .tracer для обогащения. Пример: `python3 Tracer.py -l IP_Reputation_Data_Feed.json.tracer -l Phishing_URL_Data_Feed.json.tracer -l Malicious_Hash_Data_Feed.json.tracer`
+- **Custom Mode** (Режим пользовательских функций, по умолчанию, mode == 0): Позволяет использовать собственные функции для обогащения данных. Обогащение данными производится в строках 162-183 (mode == 0), в этой секции можете использовать произвольное обогащение данными, в коде есть примеры двух тестовых обогащений.
+- **Feed File Mode** (Режим загрузки файла, mode == 1): Загружает данные из указанного файла(ов) JSON или CSV для обогащения. Пример: `python3 Tracer.py -f /root/tracer/example.csv -k ioc` или `python3 Tracer.py -f /root/tracer/example.json -k mask`. Примеры файлов рядом со скриптом. Для масок URL заполняется отдельный словарь с регулярными выражениями по маске.
+- **Dump Feed Mode** (Режим дампа данных, mode == 2): Сохраняет данные в файл с расширением .tracer для последующего использования. Пример: `python3 Tracer.py -d /root/tracer/Phishing_URL_Data_Feed.json -k mask` или `python3 Tracer.py -d Malicious_Hash_Data_Feed.json -k MD5`
+- **Load Feed Mode** (Режим загрузки данных, mode == 3): Загружает данные из нескольких файлов с расширением .tracer для обогащения. Пример: `python3 Tracer.py -l IP_Reputation_Data_Feed.json.tracer -l Phishing_URL_Data_Feed.json.tracer -l Malicious_Hash_Data_Feed.json.tracer`
 
 Все действия сервера логируются в файл `Tracer.log` для отслеживания и анализа работы сервера.
 
