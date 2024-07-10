@@ -13,7 +13,7 @@
 - from urllib.parse import unquote
 - from os.path import isfile, splitext, getsize
 - from csv import DictReader
-- from json import load, loads, dumps
+- from json import load, loads
 - import pickle
 - import logging
 
