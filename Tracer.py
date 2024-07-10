@@ -11,7 +11,7 @@ from optparse import OptionParser
 from urllib.parse import unquote
 from os.path import isfile, splitext, getsize
 from csv import DictReader
-from json import load, loads, dumps
+from json import load, loads
 import pickle
 import logging
 
@@ -197,8 +197,8 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                             try:
                                 current_socket.send(hash_enrich.encode())
                             except BrokenPipeError:
-                                print(f"Broken pipe error while sending data")
-                                logging.error(f"Broken pipe error while sending data")
+                                print("Broken pipe error while sending data")
+                                logging.error("Broken pipe error while sending data")
                 if iocs_from_event["ip"]:
                     for ip in iocs_from_event["ip"]:
                         try:
@@ -214,8 +214,8 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                             try:
                                 current_socket.send(ip_enrich.encode())
                             except BrokenPipeError:
-                                print(f"Broken pipe error while sending data")
-                                logging.error(f"Broken pipe error while sending data")
+                                print("Broken pipe error while sending data")
+                                logging.error("Broken pipe error while sending data")
                 if iocs_from_event["url"]:
                     for url in iocs_from_event["url"]:
                         try:
@@ -232,8 +232,8 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                             try:
                                 current_socket.send(url_enrich.encode())
                             except BrokenPipeError:
-                                print(f"Broken pipe error while sending data")
-                                logging.error(f"Broken pipe error while sending data")
+                                print("Broken pipe error while sending data")
+                                logging.error("Broken pipe error while sending data")
                         else:
                             #if len(feed_dict_regex.keys()) > 0:
                             for key, value in feed_dict_regex.items():
@@ -246,9 +246,9 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                                         try:
                                             current_socket.send(url_enrich.encode())
                                         except BrokenPipeError:
-                                            print(f"Broken pipe error while sending data")
-                                            logging.error(f"Broken pipe error while sending data")
-                                except error as e:
+                                            print("Broken pipe error while sending data")
+                                            logging.error("Broken pipe error while sending data")
+                                except error:
                                     continue
                                     #print(f"Error compiling regex: {e} key is {key}")
                 current_socket.send("\nLookupFinished".encode())
@@ -410,26 +410,26 @@ if __name__ == "__main__":
     logging.info(f"[START] Tracer v{__version__} is starting with options: {options}")
     if not options.feed_file and not options.dump_feed and not options.load_feed:
         print("\n\nExecuting custom_mode mode (default)\n")
-        logging.info(f"[START] Executing custom_mode mode (default)")
+        logging.info("[START] Executing custom_mode mode (default)")
         mode = 0
-    elif options.custom_mode and not options.feed_file is None and not options.key_field is None and not options.load_feed:
+    elif options.custom_mode and options.feed_file is not None and options.key_field is not None and not options.load_feed:
         print("\n\nExecuting feed_file mode\n")
-        logging.info(f"[START] Executing feed_file mode")
+        logging.info("[START] Executing feed_file mode")
         mode = 1
         feed_file = options.feed_file
-    elif options.custom_mode and options.feed_file is None and not options.key_field is None and options.load_feed is None and not options.dump_feed is None:
+    elif options.custom_mode and options.feed_file is None and options.key_field is not None and options.load_feed is None and options.dump_feed is not None:
         print("\n\nDumping feed_file mode\n")
-        logging.info(f"[START] Dumping feed_file mode")
+        logging.info("[START] Dumping feed_file mode")
         mode = 2
         feed_file = options.dump_feed
-    elif options.custom_mode and options.feed_file is None and options.key_field is None and not options.load_feed is None and options.dump_feed is None:
+    elif options.custom_mode and options.feed_file is None and options.key_field is None and options.load_feed is not None and options.dump_feed is None:
         print("\n\nLoading feed_file mode\n")
-        logging.info(f"[START] Loading feed_file mode")
+        logging.info("[START] Loading feed_file mode")
         mode = 3
         feed_file = options.load_feed
     else:
         parser.print_help()
         parser.error("Incorrect number of arguments")
-        logging.error(f"[START] Incorrect number of arguments")
+        logging.error("[START] Incorrect number of arguments")
         exit(1)
     main(mode, feed_file, options.key_field)
