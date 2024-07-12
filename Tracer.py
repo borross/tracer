@@ -16,7 +16,7 @@ import pickle
 import logging
 
 #logging config
-logging.basicConfig(filename='Tracer.log',
+logging.basicConfig(filename='/var/log/Tracer.log',
                     encoding='utf-8',
                     filemode='a',
                     format='%(asctime)s.%(msecs)03d %(name)s %(levelname)s %(message)s',
