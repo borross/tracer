@@ -33,6 +33,9 @@
 
 Все действия сервера логируются в файл `Tracer.log` для отслеживания и анализа работы сервера.
 
+В случае ошибки: *-bash: /root/tracer/Tracer.py: /usr/bin/python3^M: bad interpreter: No such file or directory*
+Выполните команду: `sed -i -e 's/\r$//' Tracer.py`
+
 
 На стороне KUMA нужно прописать следующее обогащение:
 ![image](https://github.com/borross/tracer/assets/39199196/ecbae16d-638b-4236-a809-fffd06ec7963)
