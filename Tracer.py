@@ -251,7 +251,7 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                                 except error:
                                     continue
                                     #print(f"Error compiling regex: {e} key is {key}")
-                current_socket.send("\nLookupFinished".encode())
+                current_socket.send("LookupFinished\n".encode())
                 #current_socket.send("LookupFinished".encode())
             connected_sockets.remove(current_socket)
             current_socket.close()
