@@ -56,4 +56,5 @@
 
 ![image](https://github.com/borross/tracer/assets/39199196/783bd530-956f-4634-8a4b-2af4dd41a126)
 
-
+Пример очистки раз в 2 дня в CRON:
+`0 0 */2 * * >/var/log/Tracer.log; >/opt/kaspersky/kuma/collector/<ВАШ_ID>/log/collector`
