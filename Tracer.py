@@ -1,8 +1,11 @@
 #!/usr/bin/python3
 # coding=utf-8
-__version__ = '0.2'
+__version__ = '0.3'
 
 import socket
+import requests
+import pickle
+import logging
 from select import select
 from sys import platform, exit
 from re import match, compile, search, error
@@ -11,9 +14,9 @@ from optparse import OptionParser
 from urllib.parse import unquote
 from os.path import isfile, splitext, getsize
 from csv import DictReader
-from json import load, loads
-import pickle
-import logging
+from json import load, loads, dumps
+from time import time, sleep
+from collections import deque
 
 #logging config
 logging.basicConfig(filename='/var/log/Tracer.log',
@@ -24,11 +27,19 @@ logging.basicConfig(filename='/var/log/Tracer.log',
                     level=logging.INFO)
 
 SERVER = "0.0.0.0"
-PORT = 16666
+PORT = 17999
 ADDR = (SERVER, PORT)
 regexURLFeed = compile(r"url\=([^\|]+)")
 regexIPFeed = compile(r"ip\=([^\|]+)")
 regexHASHFeed = compile(r"hash\=([^\|]+)")
+misp_url = "misp.local"
+misp_api_key = "API_KEY"
+misp_headers = {
+    'Authorization': misp_api_key,
+    'Accept': 'application/json',
+    'Content-type': 'application/json'
+}
+misp_url_api = f'https://{misp_url}/attributes/restSearch/json'
 
 iocs_from_event = {
     "hash": [],
@@ -39,6 +50,69 @@ iocs_from_event = {
 
 class CtrlBreakInterrupt(BaseException):
     pass
+
+
+class FixedSizeTTLDict:
+    def __init__(self, max_size, ttl):
+        self.max_size = max_size
+        self.ttl = ttl
+        self.data = {}
+        self.order = deque()
+        self.last_cleanup = time()
+
+    def _cleanup(self):
+        current_time = time()
+        if current_time - self.last_cleanup < self.ttl / 2:
+            return  # No need to cleanup too frequently
+        while self.order and self.data[self.order[0]][1] < current_time:
+            expired_key = self.order.popleft()
+            del self.data[expired_key]
+        self.last_cleanup = current_time
+
+    def __setitem__(self, key, value):
+        current_time = time()
+        self._cleanup()
+        if key in self.data and self.data[key][1] > current_time:            
+            logging.info(f"Key '{key}' already exists and hasn't expired. Cannot add the same key.")
+            return  # Do not add the new value
+        elif len(self.data) >= self.max_size:
+            if self.order:
+                oldest_key = self.order.popleft()
+                del self.data[oldest_key]
+            else:                
+                logging.info("Cache is full and no items have expired. Cannot add new item.")
+                return  # Do not add the new value
+        self.data[key] = (value, current_time + self.ttl)
+        self.order.append(key)
+
+    def __getitem__(self, key):
+        current_time = time()
+        self._cleanup()
+        if key in self.data:
+            return self.data[key][0]
+        #raise KeyError(f"Key '{key}' not found or expired.")
+        logging.info(f"Key '{key}' not found or expired.")
+
+    def __delitem__(self, key):
+        if key in self.data:
+            del self.data[key]
+            self.order.remove(key)
+        else:
+            #raise KeyError(f"Key '{key}' not found.")
+            logging.info(f"Key '{key}' not found.")
+
+    def __contains__(self, key):
+        current_time = time()
+        self._cleanup()
+        return key in self.data and self.data[key][1] > current_time
+
+    def __len__(self):
+        self._cleanup()
+        return len(self.data)
+
+    def get_all(self):
+        self._cleanup()
+        return {key: value[0] for key, value in self.data.items()}
 
 
 def handler(*args):
@@ -86,6 +160,49 @@ def dict_to_key_value(dictionary):
     return result
 
 
+def json_to_key_value(json_obj, pair_delimiter='|', value_delimiter='='):
+    def flatten(obj, parent_key=''):
+        items = []
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if parent_key:
+                    new_key = f"{parent_key}.{key}"
+                else:
+                    new_key = key
+                items.extend(flatten(value, new_key))
+        elif isinstance(obj, list):
+            for idx, value in enumerate(obj):
+                if parent_key:
+                    new_key = f"{parent_key}[{idx}]"
+                else:
+                    new_key = f"[{idx}]"
+                items.extend(flatten(value, new_key))
+        else:
+            items.append(f"{parent_key}{value_delimiter}{obj}")
+        return items
+    kv_pairs = flatten(json_obj)
+    return pair_delimiter.join(kv_pairs)
+
+
+def misp_response_crafter(current_socket, misp_json_data, enrich_name, value, resp_len):
+    for sub_data in range(resp_len):
+        misp_enrich = f"Category=Tracer_MISP_{enrich_name}_enricher{sub_data}|MatchedIndicator={value}|{json_to_key_value(misp_json_data['response']['Attribute'][sub_data])}\n"
+        logging.info(f"Responded by: {misp_enrich[:-1]}")
+        try:
+            current_socket.send(misp_enrich.encode())
+        except BrokenPipeError:
+            logging.error("Broken pipe error while sending data")
+
+
+def dict_response_crafter(current_socket, data_match, enrich_name, value):
+	data_enrich = f"Category=Tracer_{enrich_name}_enricher|MatchedIndicator={value}|{dict_to_key_value(data_match)}\n"
+	logging.info(f"Responded by: {data_enrich[:-1]}")
+	try:
+		current_socket.send(data_enrich.encode())
+	except BrokenPipeError:
+		logging.error("Broken pipe error while sending data")
+
+
 def search_in_dict_keys(dictionary, pattern, use_regex=False):
     # search_in_dict_keys(my_dict, r'\d$', use_regex=True)
     result = {}
@@ -125,7 +242,7 @@ def enrich_url_decoder(url_encoded_str):
         return response
 
 
-def serve_client(current_socket, server_socket, connected_sockets, starttime, mode, feed_dict, feed_dict_regex):
+def serve_client(current_socket, server_socket, connected_sockets, starttime, mode, feed_dict, feed_dict_regex, cache):
     """Takes the msg received from the client and handles it accordingly"""
     #peer_name = current_socket.getpeername()
     try:
@@ -159,28 +276,77 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
             print(f'\nReceived iocs from event, URL: {iocs_from_event["url"]} , HASH: {iocs_from_event["hash"]}, IP: {iocs_from_event["ip"]}')
             logging.info(f'Received iocs from event, URL: {iocs_from_event["url"]} , HASH: {iocs_from_event["hash"]}, IP: {iocs_from_event["ip"]}')
 
-            if mode == 0:
-                print("HELLLOO!")
+            if mode == 0:                
                 # custom mode actions
                 if iocs_from_event["url"]:
                     for url in iocs_from_event["url"]:
                         url_decode = enrich_url_decoder(url)
                         current_socket.send(url_decode.encode())
                         print("Responded by: " + url_decode)
-                get_hash = iocs_from_event["hash"][0]
-                print(get_hash)
-                tt = r'{"name": "John", "age": 30, "city": "New York", "urls": [{"url": "penispictures.com/big-dick-pics"}, {"url": "anotherurl.com"}], "tags": ["funny", "entertaining"]}'
-                print(type(tt))
-                dt = dict_to_key_value(tt)
-                print(dt)
-                hash_enrich = f"Category=HASH_enricher|MatchedIndicator={get_hash}|{dt}\n"
-                #responseToKUMA2 = hash_enrich + "\n"
-                current_socket.send(hash_enrich.encode())
-                print("Responded by: " + hash_enrich)
-                #current_socket.send("\nLookupFinished".encode())
-                current_socket.send("LookupFinished".encode())
+                current_socket.send("LookupFinished\n".encode())
                 connected_sockets.remove(current_socket)
                 current_socket.close()
+            elif mode == 4:
+                # Perfomance 12 RPS without cache
+                session = requests.Session()
+                if iocs_from_event["hash"]:
+                    for hash in iocs_from_event["hash"]:
+                        misp_body = {"value": hash}
+                        try:
+                            if cache[hash]:
+                                misp_response_crafter(current_socket, cache[hash], "HASH(CACHE)", hash)
+                            else:
+                                response = session.post(misp_url_api, headers=misp_headers, data=dumps(misp_body), verify=False)
+                                if response.status_code == 200:
+                                    json_data = loads(response.text)
+                                    resp_len = len(json_data['response']['Attribute'])
+                                    if resp_len > 0:
+                                        cache[hash] = json_data
+                                        misp_response_crafter(current_socket, json_data, "HASH", hash)
+                                    else:
+                                        cache[hash] = None
+                                        logging.info(f"No such IOC: {hash}")
+                        except error:
+                            print("MISP Error to send hash")
+                if iocs_from_event["url"]:
+                    for url in iocs_from_event["url"]:
+                        misp_body = {"value": url}
+                        try:
+                            if cache[url]:
+                                misp_response_crafter(current_socket, cache[url], "URL(CACHE)", url)
+                            else:
+                                response = session.post(misp_url_api, headers=misp_headers, data=dumps(misp_body), verify=False)
+                                if response.status_code == 200:
+                                    json_data = loads(response.text)
+                                    resp_len = len(json_data['response']['Attribute'])
+                                    if resp_len > 0:
+                                        cache[url] = json_data
+                                        misp_response_crafter(current_socket, json_data, "URL", url)
+                                    else:
+                                        cache[url] = None
+                                        logging.info(f"No such IOC: {url}")
+                        except error:
+                            print("MISP Error to send url")
+                if iocs_from_event["ip"]:
+                    for ip in iocs_from_event["ip"]:
+                        misp_body = {"value": ip}
+                        try:
+                            if cache[ip]:
+                                misp_response_crafter(current_socket, cache[ip], "IP(CACHE)", ip)
+                            else:
+                                response = session.post(misp_url_api, headers=misp_headers, data=dumps(misp_body), verify=False)
+                                if response.status_code == 200:
+                                    json_data = loads(response.text)
+                                    resp_len = len(json_data['response']['Attribute'])
+                                    if resp_len > 0:
+                                        cache[ip] = json_data
+                                        misp_response_crafter(current_socket, json_data, "IP", ip)
+                                    else:
+                                        cache[ip] = None
+                                        logging.info(f"No such IOC: {ip}")
+                        except error:
+                            print("MISP Error to send ip")
+                session.close()
             else:
                 if iocs_from_event["hash"]:
                     for hash in iocs_from_event["hash"]:
@@ -189,16 +355,9 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                         except KeyError:
                             hash_match = 0
                             print(f"KeyError: The key '{hash}' does not exist in the dictionary.")
-                            logging.warning(f"KeyError: The key '{hash}' does not exist in the dictionary.")
+                            logging.info(f"KeyError: The key '{hash}' does not exist in the dictionary.")
                         if hash_match:
-                            hash_enrich = f"Category=Tracer_HASH_enricher|MatchedIndicator={hash}|{dict_to_key_value(hash_match)}\n"
-                            print("Responded by: " + hash_enrich)
-                            logging.info(f"Responded by: {hash_enrich[:-1]}")
-                            try:
-                                current_socket.send(hash_enrich.encode())
-                            except BrokenPipeError:
-                                print("Broken pipe error while sending data")
-                                logging.error("Broken pipe error while sending data")
+                            dict_response_crafter(current_socket, hash_match, "HASH", hash)
                 if iocs_from_event["ip"]:
                     for ip in iocs_from_event["ip"]:
                         try:
@@ -206,16 +365,9 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                         except KeyError:
                             ip_match = 0
                             print(f"KeyError: The key '{ip}' does not exist in the dictionary.")
-                            logging.warning(f"KeyError: The key '{ip}' does not exist in the dictionary.")
+                            logging.info(f"KeyError: The key '{ip}' does not exist in the dictionary.")
                         if ip_match:
-                            ip_enrich = f"Category=Tracer_IP_enricher|MatchedIndicator={ip}|{dict_to_key_value(ip_match)}\n"
-                            print("Responded by: " + ip_enrich)
-                            logging.info(f"Responded by: {ip_enrich[:-1]}")
-                            try:
-                                current_socket.send(ip_enrich.encode())
-                            except BrokenPipeError:
-                                print("Broken pipe error while sending data")
-                                logging.error("Broken pipe error while sending data")
+                            dict_response_crafter(current_socket, ip_match, "IP", ip)
                 if iocs_from_event["url"]:
                     for url in iocs_from_event["url"]:
                         try:
@@ -223,36 +375,19 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                         except KeyError:
                             url_match = 0
                             print(f"KeyError: The key '{url}' does not exist in the dictionary.")
-                            logging.warning(f"KeyError: The key '{url}' does not exist in the dictionary.")
+                            logging.info(f"KeyError: The key '{url}' does not exist in the dictionary.")
                         if url_match:
-                            print(url_match)
-                            url_enrich = f"Category=Tracer_URL_enricher|MatchedIndicator={url}|{dict_to_key_value(url_match)}\n"
-                            print("Responded by: " + url_enrich)
-                            logging.info(f"Responded by: {url_enrich[:-1]}")
-                            try:
-                                current_socket.send(url_enrich.encode())
-                            except BrokenPipeError:
-                                print("Broken pipe error while sending data")
-                                logging.error("Broken pipe error while sending data")
+                            dict_response_crafter(current_socket, url_match, "URL", url)
                         else:
-                            #if len(feed_dict_regex.keys()) > 0:
+                            # Checking regex dict. if len(feed_dict_regex.keys()) > 0:
                             for key, value in feed_dict_regex.items():
                                 try:
                                     if match(key, url):
-                                        print(f"[MATCH]  Regex match {key} matched this  {url}")
-                                        url_enrich = f"Category=Tracer_URL_enricher|MatchedIndicator={url}|{dict_to_key_value(feed_dict_regex[key])}\n"
-                                        print("Responded by: " + url_enrich)
-                                        logging.info(f"[REGEX MATCH] Responded by: {url_enrich[:-1]}")
-                                        try:
-                                            current_socket.send(url_enrich.encode())
-                                        except BrokenPipeError:
-                                            print("Broken pipe error while sending data")
-                                            logging.error("Broken pipe error while sending data")
+                                        dict_response_crafter(current_socket, feed_dict_regex[key], "URL_REGEX", url)
                                 except error:
+                                    logging.info(f"KeyError: The key '{url}' does not exist in the REGEX dictionary.")
                                     continue
-                                    #print(f"Error compiling regex: {e} key is {key}")
                 current_socket.send("LookupFinished\n".encode())
-                #current_socket.send("LookupFinished".encode())
             connected_sockets.remove(current_socket)
             current_socket.close()
     
@@ -363,6 +498,9 @@ def main(mode, feed_file, key_field):
         server_socket.setsockopt(socket.SOL_TCP, 23, 5) # here 23 is the protocol number of TCP_FASTOPEN
     server_socket.bind(ADDR)
     server_socket.listen()
+    
+    # Cache TTL = IOC upd time ~ 4H & 1000 size. Is reasonable for API integrations
+    cache = FixedSizeTTLDict(max_size=1000, ttl=14400)
 
     print("\n* Server is ON *\n")
     logging.info("Server is ACTIVE")
@@ -385,7 +523,7 @@ def main(mode, feed_file, key_field):
                     active_client_sockets(connected_sockets)
                     continue
                 serve_client(
-                    current_socket, server_socket, connected_sockets, starttime, mode, feed_dict, feed_dict_regex
+                    current_socket, server_socket, connected_sockets, starttime, mode, feed_dict, feed_dict_regex, cache
                 )
     except ValueError:
         all_sockets_closed(server_socket, starttime)
@@ -402,13 +540,14 @@ if __name__ == "__main__":
     parser.add_option('-k', '--key_field', type="string", help='Key field from file CSV or JSON', dest="key_field")
     parser.add_option('-d', '--dump', type="string", dest="dump_feed", help='Dump feed to dict with saving to file', metavar="FILE")
     parser.add_option('-l', '--load', action='append', dest="load_feed", help='Loading feed from file to dict', metavar="FILE")
+    parser.add_option('-m', '--misp', action="store_true", dest="misp_mode", help='MISP integration mode')
     parser.add_option('-c', '--custom_mode', action="store_true", default=True, dest="custom_mode", help='Use your own functions for enrichment. See example in this code \"def url_decoder_enrich\"')
     options, args = parser.parse_args()
     mode = 0
     feed_file = ""
     print(options)
     logging.info(f"[START] Tracer v{__version__} is starting with options: {options}")
-    if not options.feed_file and not options.dump_feed and not options.load_feed:
+    if not options.feed_file and not options.dump_feed and not options.load_feed and not options.misp_mode:
         print("\n\nExecuting custom_mode mode (default)\n")
         logging.info("[START] Executing custom_mode mode (default)")
         mode = 0
@@ -427,6 +566,10 @@ if __name__ == "__main__":
         logging.info("[START] Loading feed_file mode")
         mode = 3
         feed_file = options.load_feed
+    elif options.misp_mode:
+        print("\n\nLoading misp_mode mode\n")
+        logging.info("[START] Loading misp_mode mode")
+        mode = 4
     else:
         parser.print_help()
         parser.error("Incorrect number of arguments")
