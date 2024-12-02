@@ -36,7 +36,7 @@ Tracer.py мимикрирует под механизм обогащения а
 - **Feed File Mode** (Режим загрузки файла, mode == 1): Загружает данные из указанного файла(ов) JSON или CSV для обогащения. Пример: `python3 Tracer.py -f /root/tracer/example.csv -k ioc` или `python3 Tracer.py -f /root/tracer/example.json -k mask`. Примеры файлов рядом со скриптом. Для масок URL заполняется отдельный словарь с регулярными выражениями по маске.
 - **Dump Feed Mode** (Режим дампа данных, mode == 2): Сохраняет данные в файл с расширением .tracer для последующего использования. Пример: `python3 Tracer.py -d /root/tracer/Phishing_URL_Data_Feed.json -k mask` или `python3 Tracer.py -d Malicious_Hash_Data_Feed.json -k MD5`
 - **Load Feed Mode** (Режим загрузки данных, mode == 3): Загружает данные из нескольких файлов с расширением .tracer для обогащения. Пример: `python3 Tracer.py -l IP_Reputation_Data_Feed.json.tracer -l Phishing_URL_Data_Feed.json.tracer -l Malicious_Hash_Data_Feed.json.tracer`
-- **MISP Mode** (Режим интеграции с MISP, mode == 4): Интеграция и обогащение фидами из MISP по API с аутентификацией по токену. Пример: `python3 Tracer.py -m`
+- **MISP Mode** (Режим интеграции с MISP, mode == 4): Интеграция и обогащение фидами из MISP по API с аутентификацией по токену. Пример: `python3 Tracer.py -m`. Предваритетльно необходимо добавить URL адрес MISP в переменной `misp_url` и указать API токен для выполнения запросов в переменной `misp_api_key`.
 
 Все действия сервера логируются в файл `Tracer.log` для отслеживания и анализа работы сервера.
 
