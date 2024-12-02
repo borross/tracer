@@ -1,10 +1,15 @@
 ![image](https://github.com/borross/tracer/assets/39199196/edb2c62c-052c-440c-868e-8ea020b8c58e)
 
 # tracer
-Утилита (скрипт) была написана для получения возможности обогощать событие по значению поля со сторонних систем с использованием языка программирования Python3. Tracer.py мимикрирует под механизм обогащения аналогично CyberTrace, с обогащенными данными можно работать подобно обогащению Threat Intelligence. Утилита может работать как на Linux (рекомендуется), так и Windows платформах (ОС).
+Утилита для получения возможности обогощать событие по значению поля со сторонних систем с использованием языка программирования Python3. 
+
+Tracer.py мимикрирует под механизм обогащения аналогично CyberTrace, с обогащенными данными можно работать подобно обогащению Threat Intelligence. Утилита может работать как на Linux (рекомендуется), так и Windows платформах (ОС).
 
 Необходимые библиотеки для работы Tracer.py:
 - import socket
+- import requests
+- import pickle
+- import logging
 - from select import select
 - from sys import platform, exit
 - from re import match, compile, search, error
@@ -14,8 +19,9 @@
 - from os.path import isfile, splitext, getsize
 - from csv import DictReader
 - from json import load, loads
-- import pickle
-- import logging
+- from time import time, sleep
+- from collections import deque
+
 
 Для использования TCP_FASTOPEN (рекомендуется) на ОС Linux выполните команду ниже и переиспользование портов:
 - echo 3 > /proc/sys/net/ipv4/tcp_fastopen
