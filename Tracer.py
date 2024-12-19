@@ -19,7 +19,7 @@ from time import time, sleep
 from collections import deque
 
 #logging config
-logging.basicConfig(filename='/var/log/Tracer.log',
+logging.basicConfig(filename='/var/log/Tracer_v03.log',
                     encoding='utf-8',
                     filemode='a',
                     format='%(asctime)s.%(msecs)03d %(name)s %(levelname)s %(message)s',
@@ -33,7 +33,7 @@ regexURLFeed = compile(r"url\=([^\|]+)")
 regexIPFeed = compile(r"ip\=([^\|]+)")
 regexHASHFeed = compile(r"hash\=([^\|]+)")
 misp_url = "misp.local"
-misp_api_key = "API_KEY"
+misp_api_key = "PeH6QMlhhrgTwNoiL1f2jCCABK3iOIPuucKD26fk"
 misp_headers = {
     'Authorization': misp_api_key,
     'Accept': 'application/json',
@@ -276,25 +276,39 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
             print(f'\nReceived iocs from event, URL: {iocs_from_event["url"]} , HASH: {iocs_from_event["hash"]}, IP: {iocs_from_event["ip"]}')
             logging.info(f'Received iocs from event, URL: {iocs_from_event["url"]} , HASH: {iocs_from_event["hash"]}, IP: {iocs_from_event["ip"]}')
 
-            if mode == 0:                
+            if mode == 0:
+                print("HELLLOO!")
                 # custom mode actions
                 if iocs_from_event["url"]:
                     for url in iocs_from_event["url"]:
                         url_decode = enrich_url_decoder(url)
                         current_socket.send(url_decode.encode())
                         print("Responded by: " + url_decode)
-                current_socket.send("LookupFinished\n".encode())
+                get_hash = iocs_from_event["hash"][0]
+                print(get_hash)
+                tt = r'{"name": "John", "age": 30, "city": "New York", "urls": [{"url": "penispictures.com/big-dick-pics"}, {"url": "anotherurl.com"}], "tags": ["funny", "entertaining"]}'
+                print(type(tt))
+                dt = dict_to_key_value(tt)
+                print(dt)
+                hash_enrich = f"Category=HASH_enricher|MatchedIndicator={get_hash}|{dt}\n"
+                #responseToKUMA2 = hash_enrich + "\n"
+                current_socket.send(hash_enrich.encode())
+                print("Responded by: " + hash_enrich)
+                #current_socket.send("\nLookupFinished".encode())
+                current_socket.send("LookupFinished".encode())
                 connected_sockets.remove(current_socket)
                 current_socket.close()
             elif mode == 4:
-                # Perfomance 12 RPS without cache
+                # Perfomance 12 RPS
                 session = requests.Session()
                 if iocs_from_event["hash"]:
                     for hash in iocs_from_event["hash"]:
-                        misp_body = {"value": hash}
+                        misp_body = {"value":{hash}}
                         try:
                             if cache[hash]:
-                                misp_response_crafter(current_socket, cache[hash], "HASH(CACHE)", hash)
+                                json_data = loads(cache[hash])
+                                resp_len = len(json_data['response']['Attribute'])
+                                misp_response_crafter(current_socket, cache[hash], "HASH(CACHE)", hash, resp_len)
                             else:
                                 response = session.post(misp_url_api, headers=misp_headers, data=dumps(misp_body), verify=False)
                                 if response.status_code == 200:
@@ -302,7 +316,7 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                                     resp_len = len(json_data['response']['Attribute'])
                                     if resp_len > 0:
                                         cache[hash] = json_data
-                                        misp_response_crafter(current_socket, json_data, "HASH", hash)
+                                        misp_response_crafter(current_socket, json_data, "HASH", hash, resp_len)
                                     else:
                                         cache[hash] = None
                                         logging.info(f"No such IOC: {hash}")
@@ -310,10 +324,12 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                             print("MISP Error to send hash")
                 if iocs_from_event["url"]:
                     for url in iocs_from_event["url"]:
-                        misp_body = {"value": url}
+                        misp_body = {"value":{url}}
                         try:
                             if cache[url]:
-                                misp_response_crafter(current_socket, cache[url], "URL(CACHE)", url)
+                                json_data = loads(cache[hash])
+                                resp_len = len(json_data['response']['Attribute'])
+                                misp_response_crafter(current_socket, cache[url], "URL(CACHE)", url, resp_len)
                             else:
                                 response = session.post(misp_url_api, headers=misp_headers, data=dumps(misp_body), verify=False)
                                 if response.status_code == 200:
@@ -321,7 +337,7 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                                     resp_len = len(json_data['response']['Attribute'])
                                     if resp_len > 0:
                                         cache[url] = json_data
-                                        misp_response_crafter(current_socket, json_data, "URL", url)
+                                        misp_response_crafter(current_socket, json_data, "URL", url, resp_len)
                                     else:
                                         cache[url] = None
                                         logging.info(f"No such IOC: {url}")
@@ -332,7 +348,9 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                         misp_body = {"value": ip}
                         try:
                             if cache[ip]:
-                                misp_response_crafter(current_socket, cache[ip], "IP(CACHE)", ip)
+                                json_data = loads(cache[hash])
+                                resp_len = len(json_data['response']['Attribute'])
+                                misp_response_crafter(current_socket, cache[ip], "IP(CACHE)", ip, resp_len)
                             else:
                                 response = session.post(misp_url_api, headers=misp_headers, data=dumps(misp_body), verify=False)
                                 if response.status_code == 200:
@@ -340,7 +358,7 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                                     resp_len = len(json_data['response']['Attribute'])
                                     if resp_len > 0:
                                         cache[ip] = json_data
-                                        misp_response_crafter(current_socket, json_data, "IP", ip)
+                                        misp_response_crafter(current_socket, json_data, "IP", ip, resp_len)
                                     else:
                                         cache[ip] = None
                                         logging.info(f"No such IOC: {ip}")
