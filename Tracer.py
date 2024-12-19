@@ -327,7 +327,7 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                         misp_body = {"value":{url}}
                         try:
                             if cache[url]:
-                                json_data = loads(cache[hash])
+                                json_data = loads(cache[url])
                                 resp_len = len(json_data['response']['Attribute'])
                                 misp_response_crafter(current_socket, cache[url], "URL(CACHE)", url, resp_len)
                             else:
@@ -348,7 +348,7 @@ def serve_client(current_socket, server_socket, connected_sockets, starttime, mo
                         misp_body = {"value": ip}
                         try:
                             if cache[ip]:
-                                json_data = loads(cache[hash])
+                                json_data = loads(cache[ip])
                                 resp_len = len(json_data['response']['Attribute'])
                                 misp_response_crafter(current_socket, cache[ip], "IP(CACHE)", ip, resp_len)
                             else:
